@@ -52,7 +52,7 @@ const checkDBConnection = (req, res, next) => {
 };
 
 // ✅ Upload route
-router.post("/upload", checkDBConnection, upload.single("file"), async (req, res) => {
+router.post("/upload", checkDBConnection, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
