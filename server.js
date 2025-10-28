@@ -8,31 +8,40 @@ import fileRoutes from "./routes/fileRoutes.js";
 
 dotenv.config();
 
-// ✅ Initialize app first
 const app = express();
 
-// ✅ Allowed origins for frontend access
-const allowedOrigins = [
-  "http://localhost:5000", // local frontend,
-  "http://localhost:3000",
-  "https://candy01.netlify.app" // replace this with your actual Netlify domain
-];
+// ✅ Get current directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// ✅ Configure CORS
+// ✅ Configure CORS properly
 app.use(
   cors({
-    origin: allowedOrigins,
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      const allowedOrigins = [
+        "http://localhost:3000",
+        "http://localhost:5000",
+        "https://candy01.netlify.app"
+      ];
+      
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
   })
 );
 
 // ✅ Middleware
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// ✅ Static uploads folder
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// ✅ Static uploads folder - serve files from uploads directory
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ✅ MongoDB connection
@@ -43,6 +52,11 @@ mongoose
 
 // ✅ Routes
 app.use("/api", fileRoutes);
+
+// ✅ Health check route
+app.get("/health", (req, res) => {
+  res.status(200).json({ message: "Server is running!" });
+});
 
 // ✅ Start server
 const PORT = process.env.PORT || 5000;
