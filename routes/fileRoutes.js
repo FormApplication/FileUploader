@@ -14,28 +14,26 @@ if (!fs.existsSync(uploadsDir)) {
   console.log("✅ Created uploads directory");
 }
 
-// Multer config
+// Multer config - ACCEPTS ALL FILE TYPES
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "uploads/");
   },
   filename: (req, file, cb) => {
-    const originalName = file.originalname.replace(/[^a-zA-Z0-9.\-]/g, '_');
-    cb(null, `${Date.now()}-${originalName}`);
+    // Clean filename and preserve extension
+    const fileExt = path.extname(file.originalname);
+    const baseName = path.basename(file.originalname, fileExt)
+      .replace(/[^a-zA-Z0-9.\-]/g, '_');
+    const finalFilename = `${Date.now()}-${baseName}${fileExt}`;
+    cb(null, finalFilename);
   }
 });
 
+// ✅ ACCEPTS ALL FILE TYPES - Remove file filter
 const upload = multer({ 
   storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf') {
-      cb(null, true);
-    } else {
-      cb(new Error('Only PDF files are allowed'), false);
-    }
-  },
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB
+    fileSize: 25 * 1024 * 1024, // Increased to 25MB for larger files
   }
 });
 
@@ -51,19 +49,25 @@ const checkDBConnection = (req, res, next) => {
   next();
 };
 
-// ✅ Upload route
-router.post("/upload", checkDBConnection, async (req, res) => {
+// ✅ Upload route - ACCEPTS ALL FILES
+router.post("/upload", checkDBConnection, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    console.log("📁 File upload attempt:", req.file.originalname);
+    console.log("📁 File upload attempt:", {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    });
 
     const newFile = new File({
       filename: req.file.filename,
       originalname: req.file.originalname,
-      path: `/uploads/${req.file.filename}`
+      path: `/uploads/${req.file.filename}`,
+      mimetype: req.file.mimetype,
+      size: req.file.size
     });
     
     await newFile.save();
@@ -74,7 +78,10 @@ router.post("/upload", checkDBConnection, async (req, res) => {
       file: {
         id: newFile._id,
         filename: newFile.filename,
-        originalname: newFile.originalname
+        originalname: newFile.originalname,
+        mimetype: newFile.mimetype,
+        size: newFile.size,
+        downloadUrl: `/uploads/${newFile.filename}`
       }
     });
   } catch (err) {
@@ -110,11 +117,43 @@ router.get("/files", checkDBConnection, async (req, res) => {
   }
 });
 
+// ✅ Download/View file route
+router.get("/files/:id", checkDBConnection, async (req, res) => {
+  try {
+    const file = await File.findById(req.params.id);
+    if (!file) {
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    const filePath = path.join(process.cwd(), 'uploads', file.filename);
+    
+    // Check if file exists on disk
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "File not found on server" });
+    }
+
+    // Set appropriate headers for download/view
+    res.setHeader('Content-Type', file.mimetype);
+    res.setHeader('Content-Disposition', `inline; filename="${file.originalname}"`);
+    
+    // Stream the file
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+    
+  } catch (err) {
+    console.error("❌ File download error:", err);
+    res.status(500).json({ error: "Could not download file: " + err.message });
+  }
+});
+
 // ✅ Multer error handling
 router.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: 'File too large (max 10MB)' });
+      return res.status(400).json({ error: 'File too large (max 25MB)' });
+    }
+    if (error.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({ error: 'Unexpected file field' });
     }
   }
   res.status(400).json({ error: error.message });
