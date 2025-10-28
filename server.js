@@ -1,10 +1,24 @@
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
+
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import fileRoutes from "./routes/fileRoutes.js";
+
+const allowedOrigins = [
+  "http://localhost:3000", // local frontend
+  "https://<your-netlify-site>.netlify.app" // replace with your deployed Netlify domain
+];
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  })
+);
 
 dotenv.config();
 const app = express();
