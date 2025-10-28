@@ -1,6 +1,7 @@
 {
   "name": "realtime-backend",
   "version": "1.0.0",
+  "type": "module",
   "description": "Backend for real-time data display",
   "main": "server.js",
   "scripts": {

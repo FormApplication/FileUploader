@@ -14,50 +14,99 @@ const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ✅ Configure CORS properly
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-      
-      const allowedOrigins = [
-        "http://localhost:3000",
-        "http://localhost:5000",
-        "https://candy01.netlify.app"
-      ];
-      
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true,
-  })
-);
+// ✅ Configure CORS - simplified for Render
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "https://candy01.netlify.app"
+  ],
+  credentials: true,
+}));
 
 // ✅ Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ Static uploads folder - serve files from uploads directory
+// ✅ Static uploads folder
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// ✅ MongoDB connection
-mongoose
-  .connect(process.env.MONGODB_URI)
-  .then(() => console.log("✅ MongoDB Connected"))
-  .catch((err) => console.error("❌ MongoDB Error:", err));
+// ✅ Improved MongoDB connection with timeout settings
+const MONGODB_URI = process.env.MONGODB_URI;
+
+console.log("🔧 Attempting MongoDB connection...");
+
+const mongooseOptions = {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 30000, // 30 seconds
+  socketTimeoutMS: 45000, // 45 seconds
+  bufferCommands: false,
+};
+
+mongoose.connect(MONGODB_URI, mongooseOptions)
+  .then(() => {
+    console.log("✅ MongoDB Connected Successfully");
+    
+    // Connection event handlers
+    mongoose.connection.on('error', (err) => {
+      console.error('❌ MongoDB connection error:', err);
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.log('⚠️ MongoDB disconnected');
+    });
+  })
+  .catch((err) => {
+    console.error("❌ MongoDB Connection Failed:", err);
+    console.log("💡 Check your MONGODB_URI in environment variables");
+    console.log("💡 Make sure your MongoDB Atlas cluster allows connections from all IPs (0.0.0.0/0)");
+  });
 
 // ✅ Routes
 app.use("/api", fileRoutes);
 
-// ✅ Health check route
-app.get("/health", (req, res) => {
-  res.status(200).json({ message: "Server is running!" });
+// ✅ Enhanced Health check route
+app.get("/health", async (req, res) => {
+  try {
+    const dbStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
+    
+    res.status(200).json({ 
+      message: "Server is running!",
+      database: dbStatus,
+      timestamp: new Date().toISOString(),
+      port: process.env.PORT
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      message: "Server error",
+      error: error.message 
+    });
+  }
 });
 
-// ✅ Start server
+// ✅ Root route
+app.get("/", (req, res) => {
+  res.json({ 
+    message: "File Upload Backend API",
+    endpoints: {
+      health: "/health",
+      upload: "/api/upload",
+      files: "/api/files"
+    }
+  });
+});
+
+// ✅ Error handling middleware
+app.use((error, req, res, next) => {
+  console.error("Server Error:", error);
+  res.status(500).json({ error: "Internal server error" });
+});
+
+// ✅ Use Render's PORT (10000) or default to 5000
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  console.log(`📊 MongoDB Status: ${mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'}`);
+});
