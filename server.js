@@ -18,7 +18,8 @@ const __dirname = path.dirname(__filename);
 app.use(cors({
   origin: [
     "http://localhost:3000",
-    "https://candy01.netlify.app"
+    "https://candy01.netlify.app",
+    "https://candy-alpha01.netlify.app"
   ],
   credentials: true,
 }));
